@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tempest 2000 — Game Boy Color</title>
+  <link rel="stylesheet" href="css/style.css"/>
+  <style>
+    html, body { background: #05010a; color: #e8d7ff; }
+    #wrap { max-width: 720px; margin: 0 auto; padding: 12px 12px 220px; }
+    h1 {
+      font-size: 22px; letter-spacing: 6px; margin: 8px 0 4px;
+      color: #ff7cff; text-shadow: 0 0 12px #c43cff;
+    }
+    .sub { color: #9ad; font-size: 13px; margin-bottom: 12px; }
+    #game canvas {
+      width: min(100%, 480px); height: auto;
+      background: #000; border: 4px solid #3a1658;
+      box-shadow: 0 0 24px #6a2cff88;
+    }
+    .help {
+      text-align: left; display: inline-block; margin-top: 14px;
+      font-size: 13px; line-height: 1.5; background: #12081c;
+      border: 1px solid #4a2080; padding: 10px 14px; border-radius: 8px;
+    }
+    kbd { background: #2a1240; padding: 1px 6px; border-radius: 4px; color: #fff; }
+    a { color: #ff9; }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <h1>TEMPEST 2000</h1>
+    <div class="sub">Game Boy Color homebrew &nbsp;·&nbsp; T2K mode</div>
+    <div id="gameboy_shell">
+      <div id="game">
+        <canvas id="mainCanvas" width="160" height="144">No Canvas Support</canvas>
+      </div>
+      <div class="help">
+        <b>Controls</b><br>
+        <kbd>←</kbd> <kbd>→</kbd> move claw &nbsp;
+        <kbd>X</kbd> / <kbd>K</kbd> fire &nbsp;
+        <kbd>Z</kbd> / <kbd>J</kbd> superzapper<br>
+        <kbd>↑</kbd> jump (after powerup) &nbsp;
+        <kbd>Enter</kbd> start / pause<br>
+        Click the game once if audio is muted.
+      </div>
+      <div id="controller">
+        <div id="controller_dpad">
+          <div id="controller_left"></div>
+          <div id="controller_right"></div>
+          <div id="controller_up"></div>
+          <div id="controller_down"></div>
+        </div>
+        <div id="controller_select" class="capsuleBtn">Select</div>
+        <div id="controller_start" class="capsuleBtn">Start</div>
+        <div id="controller_b" class="roundBtn">B</div>
+        <div id="controller_a" class="roundBtn">A</div>
+      </div>
+    </div>
+  </div>
+  <script src="js/other/mobile.js"></script>
+  <script src="js/other/base64.js"></script>
+  <script src="js/other/swfobject.js"></script>
+  <script src="js/other/resampler.js"></script>
+  <script src="js/other/XAudioServer.js"></script>
+  <script src="js/other/controls.js"></script>
+  <script src="js/other/resize.js"></script>
+  <script src="js/GameBoyCore.js"></script>
+  <script src="js/GameBoyIO.js"></script>
+</body>
+</html>
