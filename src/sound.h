@@ -24,6 +24,7 @@
 #define SONG_LEVELC 3
 #define SONG_GAMEOVER 4
 #define SONG_WARP 5
+#define SONG_LEVELD 6
 #define SONG_OFF 255
 
 void sound_init(void) NONBANKED;

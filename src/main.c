@@ -489,7 +489,10 @@ static void enter_warp(void)
     hud_dirty = 1; hud_flush();
     fmv_start(warp_bank[uweb], warp_addr[uweb]);
     DISPLAY_ON;
-    music_play(SONG_WARP);
+    {
+        static const uint8_t wt[4] = { SONG_LEVELA, SONG_LEVELB, SONG_LEVELC, SONG_LEVELD };
+        music_play(wt[((level - 1) >> 4) & 3]);
+    }
     sfx(SFX_WARP);
 }
 
@@ -502,7 +505,6 @@ static void enter_play(void)
     sprites_ok = 1;
     gstate = GS_PLAY; gstate_t = 0;
     game_message("TEMPEST 2000", 60);
-    music_play((uint8_t)(SONG_LEVELA + (((level - 1) >> 4) % 3)));
 }
 
 void main(void)

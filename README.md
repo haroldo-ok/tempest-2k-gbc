@@ -16,7 +16,7 @@ pre-rendered offline and streamed from ROM.
 | Webs | All 48 level entries (34 distinct shapes) |
 | Sprites | 845 pre-rendered images (5 sizes × up to 16 orientations) |
 | FMV | Title loop, per-web warp-in and zoom-out (32 frames each) |
-| Audio | 6 original tracks + 14 SFX; VBlank ISR; music and SFX on separate channels |
+| Audio | Original long-form GBC chiptunes (title + 4 in-game loops); 14 SFX; VBlank ISR |
 
 ## Credits and legal
 
@@ -27,9 +27,11 @@ pre-rendered offline and streamed from ROM.
 * Game rules are ported from the SMS/32X reimplementation (`src/game.c`).
 * Web geometry comes from `third_party/webdata.h`, originally extracted from
   mwenge's reconstructed Tempest 2000 source.
-* **Original to this port:** sprite designs, HUD font, title, music, effects,
-  and the GBC FMV encoder/player. The Jaguar soundtrack, speech, logo and
-  bitmap art are *not* used.
+* **Original to this port:** sprite designs, HUD font, title art, chiptune score,
+  effects, and the GBC FMV encoder/player. The Jaguar speech, logo, bitmap art
+  and soundtrack samples are *not* used. In-game music is four long looping
+  tracks (pulse lead, wave bass, sparse drums) that keep playing across webs
+  until the original 16-level `webtunes` boundary.
 * Built with [GBDK-2020](https://github.com/gbdk-2020/gbdk-2020) / SDCC.
 
 ## Playing
@@ -89,8 +91,9 @@ make                 # compile, link, splice data banks → rom/t2k.gbc
 ```
 
 `tools/build.py` pre-renders webs, sprites, title frames and FMV streams into
-`gen/blob.bin`. `make` compiles the C code with GBDK (bank 0 platform/FMV/sound,
-bank 1 game) and `tools/mkrom.py` overlays the blob from bank 3, padding to a
+`gen/blob.bin`. `tools/compose.py` writes the chiptune banks (`gen/tunes.bin`).
+`make` compiles the C code with GBDK (bank 0 platform/FMV/sound, bank 1 game)
+and `tools/mkrom.py` overlays the blob and tunes from bank 3, padding to a
 power-of-two size (2 MiB here; 4 MiB / 256 banks is the ceiling).
 
 Keep GBDK runtime, `main.c`, `fmv.c` and `sound.c` in bank 0. The FMV player is
@@ -104,22 +107,24 @@ src/            GBDK C code
   main.c        state machine, palettes, sprite streaming, lit lane, HUD
   fmv.c/.h      FMV player (NONBANKED)
   game.c/.h     game rules, AI droid, shots (8.8 fixed point) — bank 1
-  sound.c/.h    VBlank ISR: CH1 bass, CH3 lead, CH4 drums, CH2 SFX only
+  sound.c/.h    VBlank ISR: CH1 pulse lead, CH3 wave bass, CH4 drums, CH2 SFX
 tools/          offline data pipeline (Python)
   build.py      webs, sprites, title, FMV encode, blob pack
+  compose.py    original chiptunes → gen/tunes.bin
   fmvenc.py     tile dictionary, VRAM slot allocator, frame encoder
-  mkrom.py      splice code ROM + blob, pad, fix header (MBC5)
+  mkrom.py      splice code ROM + blob + tunes, pad, fix header (MBC5)
 third_party/    webdata.h
-gen/            generated blob + assets.h / assets.c
+gen/            generated blob, tunes, assets.h / assets.c
 rom/t2k.gbc     the ROM
 web/            in-browser player (GameBoy-Online)
 ```
 
 ROM map: bank 0 platform + FMV player + sound ISR, bank 1 game, banks 3+ asset
-blob (font, sprites, static webs, FMV streams, tile dictionary). Music and
-effects tick from VBlank so tempo does not stall on heavy frames. Channels are
-split so SFX never mute the bass or lead (CH1 bass, CH3 wave lead, CH2 SFX,
-CH4 drums — explode/die/zap borrow noise only).
+blob (font, sprites, static webs, FMV streams, tile dictionary, chiptunes).
+Music and SFX tick from VBlank so tempo does not stall on heavy frames.
+Channels: CH1 pulse melody, CH3 wave bass, CH2 SFX, CH4 sparse drums
+(explode/die/zap borrow noise only). In-game loops are ~3 minutes and do not
+restart between webs.
 
 ## Known limitations
 

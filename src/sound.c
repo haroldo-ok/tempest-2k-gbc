@@ -10,6 +10,7 @@
 #include <gb/gb.h>
 #include <gb/hardware.h>
 #include "sound.h"
+#include "tunes.h"
 
 /* C2 .. D#7  (64 notes). gb freq = 2048 - 131072/hz */
 static const uint16_t nfreq[64] = {
@@ -21,72 +22,17 @@ static const uint16_t nfreq[64] = {
     1985,1989,1992,1995
 };
 
-static uint8_t song, row, wait, tempo, paused;
+static uint8_t song, wait, paused;
+static uint16_t row;
+static uint8_t s_bank, s_tempo;
+static uint16_t s_addr, s_rows;
 static uint8_t sfx_t, sfx_id;
 static uint8_t sfx_pri;
 
-/* Songs: tempo, length, loop, then interleaved bass, lead, drum per row.
-   Note 0 = off, 1-63 = nfreq index, 255 = hold.
-   Drum: 0 none, 1 kick, 2 snare, 3 hat, 4 open. */
-#define N_TITLE 32
-#define N_LVLA  32
-#define N_LVLB  32
-#define N_LVLC  32
-#define N_OVER  16
-#define N_WARP  16
-
-/* packed as bass, lead, drum */
-static const uint8_t pat_title[] = {
-    9,40,1,  0,255,0,  21,36,3, 0,255,0,  9,43,1,  0,255,0,  21,40,3, 0,38,0,
-    5,41,2,  0,255,0,  17,38,3, 0,255,0,  5,45,1,  0,255,0,  17,43,3, 0,40,4,
-    12,42,1, 0,255,0,  24,40,3, 0,255,0,  12,47,1, 0,255,0,  24,45,3, 0,43,0,
-    7,38,2,  0,255,0,  19,36,3, 0,255,0,  7,40,1,  0,42,0,   19,38,3, 0,36,4,
-    9,45,1,  0,43,0,   21,40,3, 0,38,0,   9,48,1,  0,47,0,   21,43,3, 0,40,0,
-    5,46,2,  0,255,0,  17,43,3, 0,40,0,   5,41,1,  0,43,0,   17,46,3, 0,255,4,
-    7,47,1,  0,46,0,   19,43,3, 0,38,0,   7,36,1,  0,38,0,   19,43,3, 0,46,0,
-    4,48,2,  0,255,0,  16,255,3,0,255,0,  4,40,1,  0,255,0,  16,36,2, 0,32,4
-};
-static const uint8_t pat_lvla[] = {
-    14,38,1, 0,255,0,  14,33,3, 26,255,0, 14,41,1, 0,40,3,  14,38,1, 26,36,3,
-    10,38,1, 0,255,0,  10,255,3,22,41,0,  10,255,1, 0,38,3,  10,34,0, 0,255,4,
-    12,40,1, 0,255,0,  12,36,3, 24,43,0, 12,255,1, 0,40,3,  12,36,1, 24,38,3,
-    9,40,1,  0,255,0,  9,255,3,  21,33,0, 9,36,1,   0,40,3,  9,45,0,  0,255,4
-};
-static const uint8_t pat_lvlb[] = {
-    16,35,1, 0,40,0,  11,43,3, 0,255,0,  16,42,1, 0,40,3,  11,38,0, 0,35,0,
-    12,36,1, 0,255,0,  19,40,3, 0,43,0,  12,255,1, 0,40,3,  19,36,0, 0,255,4,
-    14,38,1, 0,42,0,  21,45,3, 0,255,0,  14,43,1, 0,42,3,  21,40,0, 0,38,0,
-    11,42,1, 0,255,0,  18,255,3,0,38,0,  11,35,1,  0,255,3, 18,30,2, 0,255,4
-};
-static const uint8_t pat_lvlc[] = {
-    19,31,1, 0,34,0,  14,38,3, 0,43,0,  19,41,1, 0,38,3,  14,34,0, 0,38,0,
-    15,39,1, 0,255,0, 19,43,3, 0,255,0, 15,46,1, 0,255,3, 19,43,0, 0,39,4,
-    17,41,1, 0,255,0, 12,36,3, 0,33,0,  17,36,1, 0,41,3,  12,45,0, 0,41,0,
-    18,42,1, 0,255,0, 0,255,3,  0,45,0,  18,42,1, 0,38,2,  14,255,4,0,255,0
-};
-static const uint8_t pat_over[] = {
-    9,40,1, 0,255,0, 0,255,0, 0,36,0,  0,255,0, 0,255,0, 0,33,0, 0,255,0,
-    0,28,0, 0,255,0, 0,255,0, 0,255,0,  5,32,0, 0,255,0, 0,255,0, 0,33,2
-};
-static const uint8_t pat_warp[] = {
-    9,45,1, 21,47,0, 9,48,3, 21,52,0,  9,45,1, 16,47,0, 9,48,3, 21,45,4,
-    12,43,1,24,42,0, 12,40,3,19,38,0,  9,36,1,  0,33,0,  9,40,2, 0,45,4
-};
-
-typedef struct { const uint8_t *p; uint8_t n, tempo, loop; } song_t;
-static const song_t songs[6] = {
-    { pat_title, N_TITLE, 7, 0 },
-    { pat_lvla,  N_LVLA,  5, 0 },
-    { pat_lvlb,  N_LVLB,  5, 0 },
-    { pat_lvlc,  N_LVLC,  5, 0 },
-    { pat_over,  N_OVER,  9, 255 },
-    { pat_warp,  N_WARP,  4, 0 },
-};
-
-/* 50% square in CH3 wave RAM — close to the old pulse lead. */
+/* Rounded bass wave for CH3. */
 static const uint8_t wave_sq[16] = {
-    0xFF,0xFF,0xFF,0xFF, 0xFF,0xFF,0xFF,0xFF,
-    0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00
+    0x89,0xBC,0xDE,0xFF, 0xFF,0xED,0xCB,0x98,
+    0x76,0x43,0x21,0x00, 0x00,0x12,0x34,0x67
 };
 
 static void wave_init(void)
@@ -99,28 +45,28 @@ static void wave_init(void)
     NR32_REG = 0;
 }
 
-/* CH1: music bass. note 0 = mute, 255 = hold. */
-static void bass(uint8_t note, uint8_t vol)
+/* CH1 pulse: melody (cuts through noise). 0 = mute, 255 = hold. */
+static void lead_pulse(uint8_t note)
 {
     uint16_t f;
     if (note == 0) { NR12_REG = 0; return; }
     if (note == 255 || note > 63) return;
     f = nfreq[note];
     NR10_REG = 0;
-    NR11_REG = 0xBF; /* 75% duty */
-    NR12_REG = (vol << 4) | 0x02;
+    NR11_REG = 0x80;            /* 50% duty */
+    NR12_REG = 0xD0;            /* sustain, vol 13 */
     NR13_REG = (uint8_t)f;
     NR14_REG = 0x80 | (uint8_t)(f >> 8);
 }
 
-/* CH3: music lead. */
-static void lead(uint8_t note)
+/* CH3 wave: bass, quieter than the pulse lead. */
+static void bass_wave(uint8_t note)
 {
     uint16_t f;
     if (note == 0) { NR32_REG = 0; return; }
     if (note == 255 || note > 63) return;
     f = nfreq[note];
-    NR32_REG = 0x20; /* 100% */
+    NR32_REG = 0x40; /* 50% */
     NR33_REG = (uint8_t)f;
     NR34_REG = 0x80 | (uint8_t)(f >> 8);
 }
@@ -139,12 +85,10 @@ static void sfx_pulse(uint8_t note, uint8_t vol, uint8_t duty)
 
 static void drum(uint8_t d)
 {
-    if (!d) return;
+    if (!d || d == 3) return; /* hats off — they bury the melody */
     NR41_REG = 0x3F;
-    if (d == 1) { NR42_REG = 0xA1; NR43_REG = 0x74; }      /* kick */
-    else if (d == 2) { NR42_REG = 0xC1; NR43_REG = 0x24; } /* snare */
-    else if (d == 3) { NR42_REG = 0x61; NR43_REG = 0x11; } /* hat */
-    else { NR42_REG = 0x81; NR43_REG = 0x13; }             /* open */
+    if (d == 1) { NR42_REG = 0x52; NR43_REG = 0x70; } /* kick, quiet */
+    else { NR42_REG = 0x62; NR43_REG = 0x24; }        /* snare, quiet */
     NR44_REG = 0x80;
 }
 
@@ -192,7 +136,17 @@ static void sfx_run(void)
 
 void music_play(uint8_t s) NONBANKED
 {
-    CRITICAL { song = s; row = 0; wait = 0; }
+    if (s >= NSONGS) { music_stop(); return; }
+    if (s == song) return; /* same track: keep playing across warp / next web */
+    CRITICAL {
+        song = s;
+        row = 0;
+        wait = 0;
+        s_bank = tune_bank[s];
+        s_addr = tune_addr[s];
+        s_rows = tune_rows[s];
+        s_tempo = tune_tempo[s];
+    }
 }
 void music_stop(void) NONBANKED
 {
@@ -205,26 +159,36 @@ void sound_pause(uint8_t on) NONBANKED
     if (on) { NR12_REG = 0; NR32_REG = 0; NR42_REG = 0; }
 }
 
+static void fetch_row(uint8_t *out)
+{
+    uint8_t b = s_bank, saved, i;
+    uint32_t o = (uint32_t)s_addr + (uint32_t)row * 3;
+    while (o >= 0x8000u) { o -= 0x4000u; b++; }
+    saved = CURRENT_BANK;
+    for (i = 0; i < 3; i++) {
+        if (o >= 0x8000u) { o -= 0x4000u; b++; }
+        SWITCH_ROM_MBC5(b);
+        out[i] = *(const uint8_t *)(uint16_t)o;
+        o++;
+    }
+    SWITCH_ROM_MBC5(saved);
+}
+
 /* VBlank ISR body (installed via add_VBL). Do not tag CRITICAL/INTERRUPT. */
 static void sound_vbl(void) NONBANKED
 {
-    const song_t *s;
-    const uint8_t *p;
+    uint8_t p[3];
     if (paused) return;
     sfx_run();
     if (song == SONG_OFF) return;
-    s = &songs[song];
     if (wait) { wait--; return; }
-    wait = s->tempo;
-    p = s->p + (uint16_t)row * 3;
-    bass(p[0], 9);
-    lead(p[1]);
+    wait = s_tempo;
+    fetch_row(p);
+    bass_wave(p[0]);
+    lead_pulse(p[1]);
     if (!sfx_uses_noise()) drum(p[2]);
     row++;
-    if (row >= s->n) {
-        if (s->loop == 255) { song = SONG_OFF; return; }
-        row = s->loop;
-    }
+    if (row >= s_rows) row = 0;
 }
 
 void sound_init(void) NONBANKED
