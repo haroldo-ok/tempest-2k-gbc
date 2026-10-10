@@ -505,6 +505,7 @@ static void enter_play(void)
     sprites_ok = 1;
     gstate = GS_PLAY; gstate_t = 0;
     game_message("TEMPEST 2000", 60);
+    voice_play(VOICE_ZAPPER);
 }
 
 void main(void)
@@ -557,6 +558,7 @@ void main(void)
             }
             if (press & (B_FIRE | B_START)) {
                 sfx(SFX_MENU);
+                voice_play(VOICE_SEXY2);
                 gstate = GS_SELECT; gstate_t = 0;
                 if (select_level > best_level) select_level = 1;
                 show_select();
@@ -567,6 +569,7 @@ void main(void)
             if ((press & B_RIGHT) && select_level + 2 <= best_level) { select_level += 2; sfx(SFX_MENU); show_select(); }
             if ((press & B_LEFT) && select_level > 2) { select_level -= 2; sfx(SFX_MENU); show_select(); }
             if (press & (B_FIRE | B_START)) {
+                voice_play(VOICE_SEXY2);
                 score_reset(); lives = 3; warp_tokens = 0;
                 if (select_level > 1) score_add_start((uint16_t)(select_level - 1) * 1000);
                 level = select_level; enter_warp();
@@ -582,6 +585,7 @@ void main(void)
             if (gstate == GS_PLAY && level_cleared() && gstate_t > 60) {
                 gstate = GS_ZOOM; gstate_t = 0;
                 game_message(level & 1 ? "EXCELLENT!" : "YES YES YES!", 90);
+                voice_play(level & 1 ? VOICE_EXCELLENT : VOICE_YES);
                 sfx(SFX_CLEAR);
                 kill_all_for_zoom();
                 zap_active = 0;

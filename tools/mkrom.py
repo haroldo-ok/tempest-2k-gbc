@@ -5,8 +5,8 @@ import sys
 code_path, blob_path, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
 code = bytearray(open(code_path, "rb").read())
 blob = bytearray(open(blob_path, "rb").read())
-if len(sys.argv) > 4:
-    blob += open(sys.argv[4], "rb").read()
+for extra in sys.argv[4:]:
+    blob += open(extra, "rb").read()
 BLOB_BASE = 3 * 0x4000  # bank 3 onward (0=fixed, 1=game, 2 unused)
 
 need = BLOB_BASE + len(blob)

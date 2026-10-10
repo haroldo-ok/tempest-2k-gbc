@@ -2,15 +2,19 @@
  * a frame overruns (FMV, sprite uploads).
  *
  * Channels never share a job:
- *   CH1 pulse  — music bass
+ *   CH1 pulse  — music lead
  *   CH2 pulse  — sound effects only
- *   CH3 wave   — music lead
+ *   CH3 wave   — music bass, stolen for original T2K voice PCM
  *   CH4 noise  — music drums, stolen only for explode/die/zap
+ *
+ * Voices: Jaguar signed-8 samples downsampled to 4-bit @ 8192 Hz, streamed
+ * into CH3 wave RAM from a 256 Hz timer (16 bytes = one 32-sample period).
  */
 #include <gb/gb.h>
 #include <gb/hardware.h>
 #include "sound.h"
 #include "tunes.h"
+#include "voices.h"
 
 /* C2 .. D#7  (64 notes). gb freq = 2048 - 131072/hz */
 static const uint16_t nfreq[64] = {
@@ -28,6 +32,12 @@ static uint8_t s_bank, s_tempo;
 static uint16_t s_addr, s_rows;
 static uint8_t sfx_t, sfx_id;
 static uint8_t sfx_pri;
+/* PCM player state — non-static so the naked TIM ISR can name them. */
+volatile uint8_t voice_on;
+uint8_t v_bank;
+uint8_t * v_addr;
+uint16_t v_left;
+static uint8_t wave_stolen;
 
 /* Rounded bass wave for CH3. */
 static const uint8_t wave_sq[16] = {
@@ -63,6 +73,7 @@ static void lead_pulse(uint8_t note)
 static void bass_wave(uint8_t note)
 {
     uint16_t f;
+    if (voice_on) return;
     if (note == 0) { NR32_REG = 0; return; }
     if (note == 255 || note > 63) return;
     f = nfreq[note];
@@ -148,10 +159,92 @@ void music_play(uint8_t s) NONBANKED
         s_tempo = tune_tempo[s];
     }
 }
+void voice_play(uint8_t id) NONBANKED
+{
+    if (id >= NVOICES) return;
+    CRITICAL {
+        v_left = 0;
+        v_bank = vox_bank[id];
+        v_addr = (uint8_t *)vox_addr[id];
+        wave_stolen = 1;
+        voice_on = 1;
+        v_left = vox_len[id] >> 4; /* 16-byte CH3 periods */
+    }
+}
+
+/* GBDK wav_sample TIM ISR: 16 bytes → CH3, retrigger at 256 Hz. */
+void voice_tim(void) __nonbanked __naked
+{
+    __asm
+        ld hl, #_v_left
+        ld a, (hl+)
+        or (hl)
+        jr nz, 1$
+        ld hl, #_voice_on
+        ld (hl), #0
+        ret
+1$:
+        ld hl, #_v_addr
+        ld a, (hl+)
+        ld h, (hl)
+        ld l, a
+
+        ld a, (#__current_bank)
+        ld e, a
+        ld a, (#_v_bank)
+        ld (_rROMB0), a
+
+        ldh a, (_NR51_REG)
+        ld c, a
+        and #0b10111011
+        ldh (_NR51_REG), a
+
+        xor a
+        ldh (_NR30_REG), a
+
+        .irp ofs,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+            ld a, (hl+)
+            ldh (__AUD3WAVERAM+ofs), a
+        .endm
+
+        ld a, #0x80
+        ldh (_NR30_REG), a
+        ld a, #0xFE
+        ldh (_NR31_REG), a
+        ld a, #0x20
+        ldh (_NR32_REG), a
+        xor a
+        ldh (_NR33_REG), a
+        ld a, #0xC7
+        ldh (_NR34_REG), a
+
+        ld a, c
+        ldh (_NR51_REG), a
+
+        ld a, e
+        ld (_rROMB0), a
+
+        ld a, l
+        ld (#_v_addr), a
+        ld a, h
+        ld (#_v_addr+1), a
+
+        ld hl, #_v_left
+        ld a, (hl)
+        sub #1
+        ld (hl+), a
+        ld a, (hl)
+        sbc #0
+        ld (hl), a
+        ret
+    __endasm;
+}
+
 void music_stop(void) NONBANKED
 {
-    CRITICAL { song = SONG_OFF; }
+    CRITICAL { song = SONG_OFF; v_left = 0; voice_on = 0; }
     NR12_REG = 0; NR32_REG = 0;
+    wave_init();
 }
 void sound_pause(uint8_t on) NONBANKED
 {
@@ -180,6 +273,7 @@ static void sound_vbl(void) NONBANKED
     uint8_t p[3];
     if (paused) return;
     sfx_run();
+    if (wave_stolen && !voice_on) { wave_stolen = 0; wave_init(); }
     if (song == SONG_OFF) return;
     if (wait) { wait--; return; }
     wait = s_tempo;
@@ -200,5 +294,16 @@ void sound_init(void) NONBANKED
     song = SONG_OFF;
     paused = 0;
     sfx_t = 0;
-    CRITICAL { add_VBL(sound_vbl); }
+    voice_on = 0;
+    v_left = 0;
+    /* cpu_fast(): TIMA at 8.388 MHz/256 = 32768 Hz. TMA 0x80 → 128 ticks → 256 Hz.
+     * Matches one CH3 period (32 samples @ 8192 Hz). APU is not doubled. */
+    TMA_REG = 0x80u;
+    TIMA_REG = 0x80u;
+    TAC_REG = 0x07u; /* start + 16 kHz base clock */
+    CRITICAL {
+        add_VBL(sound_vbl);
+        add_TIM(voice_tim);
+    }
+    set_interrupts(VBL_IFLAG | TIM_IFLAG);
 }

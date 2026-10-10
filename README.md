@@ -16,7 +16,7 @@ pre-rendered offline and streamed from ROM.
 | Webs | All 48 level entries (34 distinct shapes) |
 | Sprites | 845 pre-rendered images (5 sizes × up to 16 orientations) |
 | FMV | Title loop, per-web warp-in and zoom-out (32 frames each) |
-| Audio | Original long-form GBC chiptunes (title + 4 in-game loops); 14 SFX; VBlank ISR |
+| Audio | Original long-form GBC chiptunes; Jaguar voice PCM on CH3; 14 SFX |
 
 ## Credits and legal
 
@@ -26,12 +26,15 @@ pre-rendered offline and streamed from ROM.
   trademarks is claimed.
 * Game rules are ported from the SMS/32X reimplementation (`src/game.c`).
 * Web geometry comes from `third_party/webdata.h`, originally extracted from
-  mwenge's reconstructed Tempest 2000 source.
-* **Original to this port:** sprite designs, HUD font, title art, chiptune score,
-  effects, and the GBC FMV encoder/player. The Jaguar speech, logo, bitmap art
-  and soundtrack samples are *not* used. In-game music is four long looping
-  tracks (pulse lead, wave bass, sparse drums) that keep playing across webs
-  until the original 16-level `webtunes` boundary.
+  [mwenge's reconstructed Tempest 2000 source](https://github.com/mwenge/tempest2k).
+* Spoken lines are the original Jaguar samples (Excellent, Superzapper Recharge,
+  yes, oneup, sexy yes 1/2) from that same tree (`src/sounds/samples` 22–25 and
+  27–28), downsampled to 4-bit CH3 PCM. The Jaguar logo, bitmap art and
+  soundtrack MODs are *not* used.
+* **Original to this port:** sprite designs, HUD font, title art, chiptune
+  score, effects, and the GBC FMV encoder/player. In-game music is four long
+  looping tracks (pulse lead, wave bass, sparse drums) that keep playing across
+  webs until the original 16-level `webtunes` boundary.
 * Built with [GBDK-2020](https://github.com/gbdk-2020/gbdk-2020) / SDCC.
 
 ## Playing
@@ -75,6 +78,41 @@ shoot remaining spikes; hitting one costs a life) → next level.
   in a shared 2bpp dictionary (~42k unique 8×8s) and play through both GBC VRAM
   banks. Warp-in converges to the same nametable gameplay uses.
 
+### Audio
+
+**Music** is original GBC chiptune, not the Jaguar MODs. Title ~2:30; four
+in-game loops ~3:12 each. The current web's tune is started on warp-in and is
+*not* restarted between levels until the 16-web `webtunes` boundary.
+
+Channels never share a job:
+
+| CH | Job |
+|---|---|
+| CH1 pulse | melody |
+| CH2 pulse | SFX only |
+| CH3 wave | bass, stolen for voice PCM |
+| CH4 noise | sparse kick/snare (explode / die / zap borrow it) |
+
+**Voices** are the Jaguar signed-8 samples, resampled to 4-bit @ 8192 Hz and
+streamed into CH3 from a 256 Hz timer (GBDK `add_TIM`). Bass ducks while a clip
+plays. The Jaguar does *not* speak a unique name for every powerup — pickups
+are a whoosh plus on-screen text — so the port uses the original spoken lines
+as a commentator over those banners:
+
+| When | Clip (Jaguar sample) |
+|---|---|
+| Menu confirm (title / level select) | sexy yes 2 |
+| After warp-in (`TEMPEST 2000`) | Superzapper Recharge |
+| Odd web clear (`EXCELLENT!`) | Excellent |
+| Even web clear (`YES YES YES!`) | yes |
+| Extra life | oneup |
+| Particle laser | sexy yes 1 |
+| Jump enabled | sexy yes 2 |
+| AI droid | yes |
+| Zappo 2000 | Excellent |
+| Outta Here | sexy yes 2 |
+| Warp token | yes |
+
 ## Building
 
 ### Requirements
@@ -87,18 +125,23 @@ shoot remaining spikes; hitting one costs a life) → next level.
 ```sh
 export GBDK=/path/to/gbdk
 make assets          # tools/build.py → gen/blob.bin + gen/assets.h
+                     # tools/compose.py → gen/tunes.bin
+                     # tools/vox.py → gen/voices.bin
 make                 # compile, link, splice data banks → rom/t2k.gbc
 ```
 
 `tools/build.py` pre-renders webs, sprites, title frames and FMV streams into
-`gen/blob.bin`. `tools/compose.py` writes the chiptune banks (`gen/tunes.bin`).
-`make` compiles the C code with GBDK (bank 0 platform/FMV/sound, bank 1 game)
-and `tools/mkrom.py` overlays the blob and tunes from bank 3, padding to a
+`gen/blob.bin`. `tools/compose.py` writes the chiptune banks. `tools/vox.py`
+converts `third_party/t2k-vox/*.bin` (needs `gen/blob.bin` and `gen/tunes.bin`
+already sized so bank numbers in `gen/voices.h` match the splice). `make`
+compiles the C code with GBDK (bank 0 platform/FMV/sound, bank 1 game) and
+`tools/mkrom.py` overlays the blob, tunes and voices from bank 3, padding to a
 power-of-two size (2 MiB here; 4 MiB / 256 banks is the ceiling).
 
 Keep GBDK runtime, `main.c`, `fmv.c` and `sound.c` in bank 0. The FMV player is
 `NONBANKED` so it can `SWITCH_ROM` while streaming. The music sequencer is
-installed with `add_VBL()` and must stay in bank 0.
+installed with `add_VBL()` and the voice PCM player with `add_TIM()`; both
+must stay in bank 0.
 
 ## Project layout
 
@@ -107,24 +150,25 @@ src/            GBDK C code
   main.c        state machine, palettes, sprite streaming, lit lane, HUD
   fmv.c/.h      FMV player (NONBANKED)
   game.c/.h     game rules, AI droid, shots (8.8 fixed point) — bank 1
-  sound.c/.h    VBlank ISR: CH1 pulse lead, CH3 wave bass, CH4 drums, CH2 SFX
+  sound.c/.h    VBlank music/SFX + TIM CH3 PCM player (bank 0)
 tools/          offline data pipeline (Python)
   build.py      webs, sprites, title, FMV encode, blob pack
   compose.py    original chiptunes → gen/tunes.bin
+  vox.py        Jaguar voice samples → gen/voices.bin (4-bit CH3 PCM)
   fmvenc.py     tile dictionary, VRAM slot allocator, frame encoder
-  mkrom.py      splice code ROM + blob + tunes, pad, fix header (MBC5)
-third_party/    webdata.h
-gen/            generated blob, tunes, assets.h / assets.c
+  mkrom.py      splice code ROM + blob + tunes + voices, pad, fix header (MBC5)
+third_party/
+  webdata.h     original web geometry
+  t2k-vox/      Jaguar samples: excellent, zapper, yes, oneup, sexy1, sexy2
+gen/            generated blob, tunes, voices, assets.h / assets.c
 rom/t2k.gbc     the ROM
 web/            in-browser player (GameBoy-Online)
 ```
 
 ROM map: bank 0 platform + FMV player + sound ISR, bank 1 game, banks 3+ asset
-blob (font, sprites, static webs, FMV streams, tile dictionary, chiptunes).
-Music and SFX tick from VBlank so tempo does not stall on heavy frames.
-Channels: CH1 pulse melody, CH3 wave bass, CH2 SFX, CH4 sparse drums
-(explode/die/zap borrow noise only). In-game loops are ~3 minutes and do not
-restart between webs.
+blob (font, sprites, static webs, FMV streams, tile dictionary, chiptunes,
+voices). Music and SFX tick from VBlank so tempo does not stall on heavy
+frames. Voices stream 4-bit PCM on CH3 at 8192 Hz from a 256 Hz timer.
 
 ## Known limitations
 
@@ -132,3 +176,4 @@ restart between webs.
   camera panning, particle explosions, SRAM high-score save.
 * The web is wireframe (no filled lanes).
 * With many enemies on one scanline, sprites drop (GBC 10-per-line limit).
+* CH3 voice PCM is 4-bit / 8192 Hz (crunchy; that is the hardware).

@@ -46,7 +46,7 @@ void add_dec(uint16_t s)
 void add_score(uint16_t s)
 {
     score += s; add_dec(s);
-    if (score >= next_bonus) { next_bonus += 100000UL; lives++; game_message("EXTRA LIFE", 90); sfx(SFX_ONEUP); }
+    if (score >= next_bonus) { next_bonus += 100000UL; lives++; game_message("EXTRA LIFE", 90); voice_play(VOICE_ONEUP); sfx(SFX_ONEUP); }
     hud_dirty = 1;
 }
 
@@ -315,6 +315,15 @@ void collect(uint8_t k)
     static const char *const names[PU_COUNT] = { "PARTICLE LASER", "JUMP ENABLED", "AI DROID", "ZAPPO 2000", "OUTTA HERE!", "WARP TOKEN" };
     uint8_t i;
     game_message(names[k], 70); sfx(SFX_POWERUP); add_score(500);
+    /* Jaguar: pickup whoosh + text; spoken lines only on a few of them.
+     * Zappo plays Excellent (sprzap); queuing a droid plays Yes; other
+     * pickups get the menu-confirm "sexy yes" so they still talk. */
+    {
+        static const uint8_t pv[PU_COUNT] = {
+            VOICE_SEXY1, VOICE_SEXY2, VOICE_YES, VOICE_EXCELLENT, VOICE_SEXY2, VOICE_YES
+        };
+        voice_play(k < PU_COUNT ? pv[k] : VOICE_SEXY2);
+    }
     switch (k) {
     case PU_LASER: laser = 1; break;
     case PU_JUMP: jump_on = 1; break;
