@@ -61,8 +61,11 @@ shoot remaining spikes; hitting one costs a life) → next level.
 * All 48 web entries (34 distinct shapes), cycling for levels 49–99.
 * Enemies: flippers, mutant flippers, tankers (flipper / pulsar / fuseball
   payloads), spikers and their spikes, fuseballs, pulsars, demonheads, mirrors.
-* Superzapper (full clear first, single kill second), jumping, AI droid.
+* Superzapper (full clear first, single kill second), jumping.
 * Powerups: particle laser, jump, AI droid, Zappo 2000, Outta Here, warp tokens.
+  The AI droid is a second claw: it moves on its own, seeks the nearest threat
+  and fires down that lane (including enemies on the rim).
+* Autofire (hold A) and the shot pool survive a death correctly.
 * Highlighted player lane (palette swap only — flip and VRAM-bank bits from the
   FMV layout are left alone), extra lives every 20,000 then every 100,000,
   pause, game over.
@@ -99,7 +102,7 @@ so it can `SWITCH_ROM` while streaming.
 src/            GBDK C code
   main.c        state machine, palettes, sprite streaming, lit lane, HUD
   fmv.c/.h      FMV player (NONBANKED)
-  game.c/.h     game rules (8.8 fixed point, WRAM web tables) — bank 1
+  game.c/.h     game rules, AI droid, shots (8.8 fixed point) — bank 1
   sound.c/.h    pulse + noise music sequencer and effects — bank 2
 tools/          offline data pipeline (Python)
   build.py      webs, sprites, title, FMV encode, blob pack

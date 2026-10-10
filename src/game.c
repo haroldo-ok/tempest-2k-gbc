@@ -15,6 +15,8 @@ eshot_t eshots[MAX_ESHOT];
 expl_t expl[MAX_EXPL];
 uint16_t spikes[18];
 uint8_t laser, jump_on, droid, jumping, zap_active, zap_t, pu_count, warp_tokens;
+uint16_t droid_pos;
+uint8_t droid_lane, droid_cd;
 uint8_t enemies_alive, frame8, shake;
 const char *msg; uint8_t msg_t;
 uint8_t web_bank; uint16_t web_tbl;
@@ -107,6 +109,7 @@ void level_setup(uint8_t lvl) BANKED
     zaps = 2; zap_active = 0; jump_on = 0; laser = 0; droid = 0; pu_count = 0;
     player_z = 0; jumping = 0; shots_alive = 0; enemies_alive = 0;
     spawn_t = 40; fire_cd = 0; kills = 0;
+    droid_pos = player_pos; droid_lane = player_lane; droid_cd = 0;
     if (lvl > best_level && (lvl & 1)) best_level = lvl;
     hud_dirty = 1;
 }
@@ -315,7 +318,12 @@ void collect(uint8_t k)
     switch (k) {
     case PU_LASER: laser = 1; break;
     case PU_JUMP: jump_on = 1; break;
-    case PU_DROID: droid = 1; break;
+    case PU_DROID:
+        droid = 1;
+        droid_pos = player_pos;
+        droid_lane = player_lane;
+        droid_cd = 0;
+        break;
     case PU_ZAPPO: zaps++; break;
     case PU_OUTTA:
         for (i = 0; i < MAX_EN; i++) en[i].type = T_NONE;
@@ -332,9 +340,8 @@ void run_powerup(enemy_t *e)
 {
     e->z += e->dz;
     if (e->z <= 0) {
-        int8_t d = (int8_t)e->lane - (int8_t)player_lane;
         e->type = T_NONE;
-        if (d == 0 || (droid && (d == 1 || d == -1))) collect(e->aux);
+        if (e->lane == player_lane || (droid && e->lane == droid_lane)) collect(e->aux);
     }
 }
 
@@ -361,7 +368,6 @@ void update_enemies(void)
 void fire(uint8_t lane, int16_t z, uint8_t las)
 {
     uint8_t i;
-    if (shots_alive >= (laser ? 8 : 6)) return;
     for (i = 0; i < MAX_SHOT; i++) if (!shots[i].alive) {
         shots[i].alive = 1; shots[i].lane = lane; shots[i].z = z; shots[i].laser = las; shots_alive++;
         return;
@@ -374,38 +380,42 @@ void run_shots(int16_t depth_limit)
     for (i = 0; i < MAX_SHOT; i++) {
         shot_t *s = &shots[i];
         if (!s->alive) continue;
+        /* Hit-test at the shot's current z first so rim (z≈0) enemies
+         * are not skipped when the shot then jumps +141. */
+        if (gstate == GS_PLAY) {
+            for (j = 0; j < MAX_ESHOT; j++) {
+                eshot_t *q = &eshots[j];
+                if (q->alive && q->lane == s->lane && (uint16_t)(q->z - s->z + 179) < 358) {
+                    q->alive = 0; add_score(10); if (!s->laser) { s->alive = 0; shots_alive--; } break;
+                }
+            }
+            if (!s->alive) continue;
+            for (j = 0; j < MAX_EN; j++) {
+                enemy_t *e = &en[j];
+                uint8_t same;
+                if (e->type == T_NONE || e->type == T_POWERUP) continue;
+                same = e->lane == s->lane;
+                if (!same && (e->type == T_FLIPPER || e->type == T_MUTANT) && e->z == 0 && e->lp > 4 &&
+                    wrap((int8_t)e->lane + (int8_t)e->dir) == s->lane) same = 1;
+                if (!same) continue;
+                if (e->type == T_FUSE && e->phase != 1 && !s->laser) continue;
+                if ((uint16_t)(e->z - s->z + 179) < 358) {
+                    if (e->type == T_MIRROR) {
+                        s->alive = 0; shots_alive--; enemy_shot(e->lane, e->z); break;
+                    }
+                    if (--e->hp == 0) kill_enemy(e, 1);
+                    if (!s->laser || e->type == T_DEMON) { s->alive = 0; shots_alive--; }
+                    break;
+                }
+            }
+            if (!s->alive) continue;
+        }
         s->z += 141;
         if (s->z > depth_limit) { s->alive = 0; shots_alive--; continue; }
         if (spikes[s->lane] && s->z >= (int16_t)(DEPTH - spikes[s->lane])) {
             spikes[s->lane] = spikes[s->lane] > 128 ? spikes[s->lane] - 128 : 0;
             add_score(1); sfx(SFX_SPIKE);
             s->alive = 0; shots_alive--; continue;
-        }
-        if (gstate != GS_PLAY) continue;
-        for (j = 0; j < MAX_ESHOT; j++) {
-            eshot_t *q = &eshots[j];
-            if (q->alive && q->lane == s->lane && (uint16_t)(q->z - s->z + 179) < 358) {
-                q->alive = 0; add_score(10); if (!s->laser) { s->alive = 0; shots_alive--; } break;
-            }
-        }
-        if (!s->alive) continue;
-        for (j = 0; j < MAX_EN; j++) {
-            enemy_t *e = &en[j];
-            uint8_t same;
-            if (e->type == T_NONE || e->type == T_POWERUP) continue;
-            same = e->lane == s->lane;
-            if (!same && (e->type == T_FLIPPER || e->type == T_MUTANT) && e->z == 0 && e->lp > 4 &&
-                wrap((int8_t)e->lane + (int8_t)e->dir) == s->lane) same = 1;
-            if (!same) continue;
-            if (e->type == T_FUSE && e->phase != 1 && !s->laser) continue;
-            if ((uint16_t)(e->z - s->z + 179) < 358) {
-                if (e->type == T_MIRROR) {
-                    s->alive = 0; shots_alive--; enemy_shot(e->lane, e->z); break;
-                }
-                if (--e->hp == 0) kill_enemy(e, 1);
-                if (!s->laser || e->type == T_DEMON) { s->alive = 0; shots_alive--; }
-                break;
-            }
         }
     }
 }
@@ -439,9 +449,74 @@ void move_player(uint8_t btn, uint8_t spd)
     if (player_lane >= lanes) player_lane = closed ? 0 : lanes - 1;
 }
 
-void play_tick(uint8_t btn, uint8_t press) BANKED
+static int8_t toward_lane(uint8_t from, uint8_t to)
+{
+    int8_t d = (int8_t)to - (int8_t)from;
+    if (closed) { int8_t h = lanes >> 1; if (d > h) d -= lanes; else if (d < -h) d += lanes; }
+    return d > 0 ? 1 : d < 0 ? -1 : 0;
+}
+
+/* Independent AI claw: seek the most threatening enemy and fire on its lane. */
+static void run_droid(void)
 {
     uint8_t i;
+    int16_t best = 0x7FFF;
+    int8_t tl = -1;
+    int8_t dir;
+    uint16_t maxp;
+    uint8_t spd = 36;
+
+    if (!droid) return;
+
+    for (i = 0; i < MAX_EN; i++) {
+        enemy_t *e = &en[i];
+        int8_t d, ad;
+        int16_t sc;
+        if (e->type == T_NONE || e->type == T_POWERUP) continue;
+        d = (int8_t)e->lane - (int8_t)droid_lane;
+        if (closed) {
+            if (d > (int8_t)(lanes >> 1)) d -= lanes;
+            else if (d < -(int8_t)(lanes >> 1)) d += lanes;
+        }
+        ad = d < 0 ? (int8_t)-d : d;
+        sc = (e->z >> 5) + ((int16_t)ad << 4);
+        if (sc < best) { best = sc; tl = (int8_t)e->lane; }
+    }
+
+    maxp = (uint16_t)lanes << 8;
+    if (tl >= 0) {
+        dir = toward_lane(droid_lane, (uint8_t)tl);
+        if (dir < 0) {
+            if (droid_pos >= spd) droid_pos -= spd;
+            else droid_pos = closed ? droid_pos + maxp - spd : 0;
+        } else if (dir > 0) {
+            droid_pos += spd;
+            if (droid_pos >= maxp) droid_pos = closed ? droid_pos - maxp : maxp - 1;
+        }
+    }
+    droid_lane = (uint8_t)((droid_pos + 128) >> 8);
+    if (droid_lane >= lanes) droid_lane = closed ? 0 : lanes - 1;
+
+    if (droid_cd) droid_cd--;
+    if (tl >= 0 && !droid_cd) {
+        int8_t d, ad;
+        d = (int8_t)droid_lane - tl;
+        if (closed) {
+            if (d > (int8_t)(lanes >> 1)) d -= lanes;
+            else if (d < -(int8_t)(lanes >> 1)) d += lanes;
+        }
+        ad = d < 0 ? (int8_t)-d : d;
+        /* Shoot the target lane once we're on it or next to it, from the rim
+         * so the shot overlaps z≈0 (playfield edge) this frame. */
+        if (ad <= 1) {
+            fire((uint8_t)tl, 0, 0);
+            droid_cd = 6;
+        }
+    }
+}
+
+void play_tick(uint8_t btn, uint8_t press) BANKED
+{
     frame8++;
     move_player(btn, 41);
     if (fire_cd) fire_cd--;
@@ -452,17 +527,7 @@ void play_tick(uint8_t btn, uint8_t press) BANKED
     if (press & B_ZAP) superzap();
     if ((press & B_JUMP) && jump_on && !jumping) { jumping = 1; player_dz = -115; sfx(SFX_JUMP); }
     if (jumping) { player_z += player_dz; player_dz += 6; if (player_z >= 0) { player_z = 0; jumping = 0; } }
-    if (droid && (frame8 & 3) == 0) {
-        int16_t best = 0x7FFF; int8_t bl = -1;
-        for (i = 0; i < MAX_EN; i++) {
-            enemy_t *e = &en[i]; int8_t d;
-            if (e->type == T_NONE || e->type == T_POWERUP) continue;
-            d = (int8_t)e->lane - (int8_t)player_lane;
-            if (closed) { if (d > (int8_t)(lanes >> 1)) d -= lanes; else if (d < -(int8_t)(lanes >> 1)) d += lanes; }
-            if (d >= -1 && d <= 1 && e->z < best) { best = e->z; bl = e->lane; }
-        }
-        if (bl >= 0) fire((uint8_t)bl, 128, 0);
-    }
+    run_droid();
     update_enemies();
     run_shots(DEPTH + 256);
     run_eshots();
@@ -489,6 +554,21 @@ void died_tick(void) BANKED
     run_expl();
     if (gstate_t == 1) for (i = 0; i < MAX_ESHOT; i++) eshots[i].alive = 0;
     if (msg_t && --msg_t == 0) hud_dirty = 1;
+}
+
+void player_respawn(void) BANKED
+{
+    uint8_t i;
+    for (i = 0; i < MAX_EN; i++) en[i].type = T_NONE;
+    for (i = 0; i < MAX_SHOT; i++) shots[i].alive = 0;
+    for (i = 0; i < MAX_ESHOT; i++) eshots[i].alive = 0;
+    enemies_alive = 0;
+    zap_active = 0;
+    jumping = 0;
+    player_z = 0;
+    shots_alive = 0;
+    fire_cd = 0;
+    if (zaps < 1) zaps = 1;
 }
 
 void kill_all_for_zoom(void) BANKED

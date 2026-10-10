@@ -319,9 +319,10 @@ static void draw_claw(int16_t zrel)
     claw_want = IMG_CLAW + ang * 5 + sz;
     if (claw_img == claw_want || claw_img != 0xFFFF)
         spr(x, y, SPR_CLAW, 0, sz != 0);
-    if (droid && gstate == GS_PLAY) {
-        uint8_t ph = frame8 & 15;
-        spr((uint8_t)(x + (ph < 8 ? ph : 16 - ph) - 4), (uint8_t)(y - 10), SPR_DROID, 4, 0);
+    if (droid && (gstate == GS_PLAY || gstate == GS_PAUSE)) {
+        uint8_t dk = (uint8_t)(((droid_pos - ((uint16_t)droid_lane << 8) + 128) >> 5) & 7);
+        const uint8_t *dc = WT + 0x20 + (droid_lane * 8 + dk) * 2;
+        spr(dc[0], dc[1], SPR_DROID, 4, 0);
     }
 }
 
@@ -601,10 +602,7 @@ void main(void)
                     if (score > hiscore) hiscore = score;
                     music_play(SONG_GAMEOVER);
                 } else {
-                    for (i = 0; i < MAX_EN; i++) en[i].type = T_NONE;
-                    for (i = 0; i < MAX_SHOT; i++) shots[i].alive = 0;
-                    enemies_alive = 0; zap_active = 0; jumping = 0; player_z = 0;
-                    if (zaps < 1) zaps = 1;
+                    player_respawn();
                     gstate = GS_PLAY; gstate_t = 0; hud_dirty = 1;
                 }
             }

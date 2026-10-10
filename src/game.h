@@ -17,7 +17,7 @@ enum { T_NONE = 0, T_FLIPPER, T_MUTANT, T_TANKER, T_TANKER_P, T_TANKER_F, T_SPIK
 enum { PU_LASER = 0, PU_JUMP, PU_DROID, PU_ZAPPO, PU_OUTTA, PU_WARP, PU_COUNT };
 
 #define MAX_EN    16
-#define MAX_SHOT  8
+#define MAX_SHOT  12
 #define MAX_ESHOT 6
 #define MAX_EXPL  4
 #define DEPTH     4096
@@ -46,6 +46,8 @@ extern eshot_t eshots[MAX_ESHOT];
 extern expl_t expl[MAX_EXPL];
 extern uint16_t spikes[18];
 extern uint8_t laser, jump_on, droid, jumping, zap_active, zap_t, pu_count, warp_tokens;
+extern uint16_t droid_pos;
+extern uint8_t droid_lane;
 extern uint8_t enemies_alive, frame8, shake;
 extern const char *msg; extern uint8_t msg_t;
 extern uint8_t web_bank; extern uint16_t web_tbl;
@@ -65,6 +67,7 @@ void game_message(const char *m, uint8_t t) BANKED;
 void level_setup(uint8_t lvl) BANKED;
 void play_tick(uint8_t btn, uint8_t press) BANKED;
 void died_tick(void) BANKED;
+void player_respawn(void) BANKED;
 void zoom_tick(uint8_t btn, uint8_t press) BANKED;
 uint8_t level_cleared(void) BANKED;
 void kill_all_for_zoom(void) BANKED;
