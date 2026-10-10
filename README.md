@@ -32,9 +32,9 @@ pre-rendered offline and streamed from ROM.
   27–28), downsampled to 4-bit CH3 PCM. The Jaguar logo, bitmap art and
   soundtrack MODs are *not* used.
 * **Original to this port:** sprite designs, HUD font, title art, chiptune
-  score, effects, and the GBC FMV encoder/player. In-game music is four long
-  looping tracks (pulse lead, wave bass, sparse drums) that keep playing across
-  webs until the original 16-level `webtunes` boundary.
+  score, effects, and the GBC FMV encoder/player. In-game music is four ~1:36
+  looping tracks (pulse lead, wave bass, sparse drums, tempo 3) that keep
+  playing across webs until the original 16-level `webtunes` boundary.
 * Built with [GBDK-2020](https://github.com/gbdk-2020/gbdk-2020) / SDCC.
 
 ## Playing
@@ -81,8 +81,9 @@ shoot remaining spikes; hitting one costs a life) → next level.
 ### Audio
 
 **Music** is original GBC chiptune, not the Jaguar MODs. Title ~2:30; four
-in-game loops ~3:12 each. The current web's tune is started on warp-in and is
-*not* restarted between levels until the 16-web `webtunes` boundary.
+in-game loops ~1:36 each (tempo 3). The current web's tune is started on
+warp-in and is *not* restarted between levels until the 16-web `webtunes`
+boundary.
 
 Channels never share a job:
 
@@ -169,6 +170,7 @@ ROM map: bank 0 platform + FMV player + sound ISR, bank 1 game, banks 3+ asset
 blob (font, sprites, static webs, FMV streams, tile dictionary, chiptunes,
 voices). Music and SFX tick from VBlank so tempo does not stall on heavy
 frames. Voices stream 4-bit PCM on CH3 at 8192 Hz from a 256 Hz timer.
+In-game loops are ~1:36 and do not restart between webs.
 
 ## Known limitations
 

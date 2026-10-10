@@ -13,6 +13,6 @@ static const uint16_t tune_rows[NSONGS] = {
     896, 1920, 1920, 1920, 256, 256, 1920
 };
 static const uint8_t tune_tempo[NSONGS] = {
-    10, 6, 6, 6, 12, 5, 6
+    10, 3, 3, 3, 12, 5, 3
 };
 #endif

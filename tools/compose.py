@@ -138,7 +138,7 @@ def song_level_a() -> tuple[bytes, int]:
     bars += [(bE, ans, d), (bE, ans, d), (bF, br, d), (bG, ch1, df)] * 2  # bridge 8
     bars += prog([ch1, hook, ch2, hook3], d) * 4  # final 16
     bars += [(bA, hook, d), (bA, rest, d), (bA, hook2, d), (bA, rest, df)] * 2  # outro 8
-    return pack(bars), 6
+    return pack(bars), 3
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +172,7 @@ def song_level_b() -> tuple[bytes, int]:
     bars += [(bB, h2, d), (bB, h1, d), (bC, c2, d), (bD, c1, df)] * 2
     bars += prog([c1, h1, c2, h4], d) * 4
     bars += [(bE, h1, d), (bE, rest, d), (bE, h4, d), (bE, rest, df)] * 2
-    return pack(bars), 6
+    return pack(bars), 3
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +206,7 @@ def song_level_c() -> tuple[bytes, int]:
     bars += [(bCs, h4, d), (bCs, h1, d), (bD, c2, d), (bE, c1, df)] * 2
     bars += prog([c1, h1, c2, h4], d) * 4
     bars += [(bFs, h1, d), (bFs, rest, d), (bFs, h2, d), (bFs, rest, df)] * 2
-    return pack(bars), 6
+    return pack(bars), 3
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +240,7 @@ def song_level_d() -> tuple[bytes, int]:
     bars += [(bG, h3, d), (bG, h1, d), (bAb, c2, d), (bBb, c1, df)] * 2
     bars += prog([c1, h1, c2, h4], d) * 4
     bars += [(bC, h1, d), (bC, rest, d), (bC, c1, d), (bC, rest, df)] * 2
-    return pack(bars), 6
+    return pack(bars), 3
 
 
 # ---------------------------------------------------------------------------
