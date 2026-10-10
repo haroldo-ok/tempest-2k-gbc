@@ -1,8 +1,15 @@
-/* GBC sound: 2 pulse + noise. Original chiptune for this port. */
+/* GBC sound. Sequencer runs from VBlank so tempo stays steady even when
+ * a frame overruns (FMV, sprite uploads).
+ *
+ * Channels never share a job:
+ *   CH1 pulse  — music bass
+ *   CH2 pulse  — sound effects only
+ *   CH3 wave   — music lead
+ *   CH4 noise  — music drums, stolen only for explode/die/zap
+ */
 #include <gb/gb.h>
 #include <gb/hardware.h>
 #include "sound.h"
-#pragma bank 2
 
 /* C2 .. D#7  (64 notes). gb freq = 2048 - 131072/hz */
 static const uint16_t nfreq[64] = {
@@ -76,29 +83,58 @@ static const song_t songs[6] = {
     { pat_warp,  N_WARP,  4, 0 },
 };
 
-static void pulse(uint8_t ch, uint8_t note, uint8_t vol, uint8_t duty)
+/* 50% square in CH3 wave RAM — close to the old pulse lead. */
+static const uint8_t wave_sq[16] = {
+    0xFF,0xFF,0xFF,0xFF, 0xFF,0xFF,0xFF,0xFF,
+    0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00
+};
+
+static void wave_init(void)
+{
+    uint8_t i;
+    NR30_REG = 0;
+    for (i = 0; i < 16; i++) ((volatile uint8_t *)0xFF30)[i] = wave_sq[i];
+    NR30_REG = 0x80;
+    NR31_REG = 0xFF;
+    NR32_REG = 0;
+}
+
+/* CH1: music bass. note 0 = mute, 255 = hold. */
+static void bass(uint8_t note, uint8_t vol)
 {
     uint16_t f;
-    if (note == 0 || note == 255 || note > 63) {
-        if (note == 0) {
-            if (ch == 1) NR12_REG = 0;
-            else NR22_REG = 0;
-        }
-        return;
-    }
+    if (note == 0) { NR12_REG = 0; return; }
+    if (note == 255 || note > 63) return;
     f = nfreq[note];
-    if (ch == 1) {
-        NR10_REG = 0;
-        NR11_REG = (duty << 6) | 0x3F;
-        NR12_REG = (vol << 4) | 0x02;
-        NR13_REG = (uint8_t)f;
-        NR14_REG = 0x80 | (uint8_t)(f >> 8);
-    } else {
-        NR21_REG = (duty << 6) | 0x3F;
-        NR22_REG = (vol << 4) | 0x02;
-        NR23_REG = (uint8_t)f;
-        NR24_REG = 0x80 | (uint8_t)(f >> 8);
-    }
+    NR10_REG = 0;
+    NR11_REG = 0xBF; /* 75% duty */
+    NR12_REG = (vol << 4) | 0x02;
+    NR13_REG = (uint8_t)f;
+    NR14_REG = 0x80 | (uint8_t)(f >> 8);
+}
+
+/* CH3: music lead. */
+static void lead(uint8_t note)
+{
+    uint16_t f;
+    if (note == 0) { NR32_REG = 0; return; }
+    if (note == 255 || note > 63) return;
+    f = nfreq[note];
+    NR32_REG = 0x20; /* 100% */
+    NR33_REG = (uint8_t)f;
+    NR34_REG = 0x80 | (uint8_t)(f >> 8);
+}
+
+/* CH2: SFX only. */
+static void sfx_pulse(uint8_t note, uint8_t vol, uint8_t duty)
+{
+    uint16_t f;
+    if (note == 0 || note > 63) { NR22_REG = 0; return; }
+    f = nfreq[note];
+    NR21_REG = (duty << 6) | 0x3F;
+    NR22_REG = (vol << 4) | 0x02;
+    NR23_REG = (uint8_t)f;
+    NR24_REG = 0x80 | (uint8_t)(f >> 8);
 }
 
 static void drum(uint8_t d)
@@ -112,13 +148,21 @@ static void drum(uint8_t d)
     NR44_REG = 0x80;
 }
 
+static uint8_t sfx_uses_noise(void)
+{
+    return (uint8_t)(sfx_t && (sfx_id == SFX_EXPLODE || sfx_id == SFX_DIE || sfx_id == SFX_ZAP));
+}
+
 static const uint8_t sfx_pri_tbl[SFX_COUNT] = { 2,2,4,1,5,5,3,4,2,3,1,3,4,3 };
 
-void sfx(uint8_t id) BANKED
+void sfx(uint8_t id) NONBANKED
 {
     if (id >= SFX_COUNT) return;
-    if (sfx_t && sfx_pri_tbl[id] < sfx_pri) return;
-    sfx_id = id; sfx_t = 12; sfx_pri = sfx_pri_tbl[id];
+    CRITICAL {
+        if (!(sfx_t && sfx_pri_tbl[id] < sfx_pri)) {
+            sfx_id = id; sfx_t = 12; sfx_pri = sfx_pri_tbl[id];
+        }
+    }
 }
 
 static void sfx_run(void)
@@ -128,32 +172,41 @@ static void sfx_run(void)
     t = 12 - sfx_t;
     sfx_t--;
     switch (sfx_id) {
-    case SFX_SHOT:   pulse(2, 50 - t, 8, 2); break;
-    case SFX_LASER:  pulse(2, 55 - t, 10, 1); break;
+    case SFX_SHOT:   sfx_pulse(50 - t, 8, 2); break;
+    case SFX_LASER:  sfx_pulse(55 - t, 10, 1); break;
     case SFX_EXPLODE: if (t == 0) { NR41_REG=0x3F; NR42_REG=0xF3; NR43_REG=0x57; NR44_REG=0x80; } break;
-    case SFX_FLIP:   pulse(2, 40 + t, 6, 1); break;
-    case SFX_DIE:    pulse(1, 36 - t, 12, 2); if (t == 0) { NR41_REG=0x3F; NR42_REG=0xF4; NR43_REG=0x44; NR44_REG=0x80; } break;
-    case SFX_ZAP:    if ((t & 1) == 0) { NR41_REG=0x3F; NR42_REG=0xF1; NR43_REG=0x14 + t; NR44_REG=0x80; } pulse(2, 48 + (t & 3), 10, 0); break;
-    case SFX_POWERUP: pulse(2, 40 + t * 2, 10, 2); break;
-    case SFX_CLEAR:  pulse(2, 45 + t, 10, 2); pulse(1, 33 + t, 8, 2); break;
-    case SFX_SPIKE:  pulse(2, 30, 6, 1); break;
-    case SFX_JUMP:   pulse(2, 36 + t * 2, 8, 2); break;
-    case SFX_MENU:   pulse(2, 48, 8, 2); break;
-    case SFX_WARP:   pulse(1, 40 + t, 8, 0); pulse(2, 52 + t, 8, 1); break;
-    case SFX_ONEUP:  pulse(2, 48 + (t > 6 ? 4 : 0), 12, 2); break;
-    case SFX_SPLIT:  pulse(2, 42, 7, 1); break;
+    case SFX_FLIP:   sfx_pulse(40 + t, 6, 1); break;
+    case SFX_DIE:    sfx_pulse(36 - t, 12, 2); if (t == 0) { NR41_REG=0x3F; NR42_REG=0xF4; NR43_REG=0x44; NR44_REG=0x80; } break;
+    case SFX_ZAP:    if ((t & 1) == 0) { NR41_REG=0x3F; NR42_REG=0xF1; NR43_REG=0x14 + t; NR44_REG=0x80; } sfx_pulse(48 + (t & 3), 10, 0); break;
+    case SFX_POWERUP: sfx_pulse(40 + t * 2, 10, 2); break;
+    case SFX_CLEAR:  sfx_pulse(45 + t, 10, 2); break;
+    case SFX_SPIKE:  sfx_pulse(30, 6, 1); break;
+    case SFX_JUMP:   sfx_pulse(36 + t * 2, 8, 2); break;
+    case SFX_MENU:   sfx_pulse(48, 8, 2); break;
+    case SFX_WARP:   sfx_pulse(52 + t, 8, 1); break;
+    case SFX_ONEUP:  sfx_pulse(48 + (t > 6 ? 4 : 0), 12, 2); break;
+    case SFX_SPLIT:  sfx_pulse(42, 7, 1); break;
     }
-    if (!sfx_t) sfx_pri = 0;
+    if (!sfx_t) { sfx_pri = 0; NR22_REG = 0; }
 }
 
-void music_play(uint8_t s) BANKED { song = s; row = 0; wait = 0; }
-void music_stop(void) BANKED { song = SONG_OFF; NR12_REG = 0; NR22_REG = 0; }
-void sound_pause(uint8_t on) BANKED {
-    paused = on;
-    if (on) { NR12_REG = 0; NR22_REG = 0; NR42_REG = 0; }
+void music_play(uint8_t s) NONBANKED
+{
+    CRITICAL { song = s; row = 0; wait = 0; }
+}
+void music_stop(void) NONBANKED
+{
+    CRITICAL { song = SONG_OFF; }
+    NR12_REG = 0; NR32_REG = 0;
+}
+void sound_pause(uint8_t on) NONBANKED
+{
+    CRITICAL { paused = on; }
+    if (on) { NR12_REG = 0; NR32_REG = 0; NR42_REG = 0; }
 }
 
-void sound_tick(void) BANKED
+/* VBlank ISR body (installed via add_VBL). Do not tag CRITICAL/INTERRUPT. */
+static void sound_vbl(void) NONBANKED
 {
     const song_t *s;
     const uint8_t *p;
@@ -164,14 +217,9 @@ void sound_tick(void) BANKED
     if (wait) { wait--; return; }
     wait = s->tempo;
     p = s->p + (uint16_t)row * 3;
-    if (!sfx_t) {
-        pulse(1, p[0], 9, 2);
-        pulse(2, p[1], 11, 1);
-    } else {
-        pulse(1, p[0], 7, 2);
-    }
-    if (!sfx_t || sfx_id == SFX_SHOT || sfx_id == SFX_LASER || sfx_id == SFX_FLIP)
-        drum(p[2]);
+    bass(p[0], 9);
+    lead(p[1]);
+    if (!sfx_uses_noise()) drum(p[2]);
     row++;
     if (row >= s->n) {
         if (s->loop == 255) { song = SONG_OFF; return; }
@@ -179,12 +227,14 @@ void sound_tick(void) BANKED
     }
 }
 
-void sound_init(void) BANKED
+void sound_init(void) NONBANKED
 {
     NR52_REG = 0x80;
     NR50_REG = 0x77;
     NR51_REG = 0xFF;
+    wave_init();
     song = SONG_OFF;
     paused = 0;
     sfx_t = 0;
+    CRITICAL { add_VBL(sound_vbl); }
 }

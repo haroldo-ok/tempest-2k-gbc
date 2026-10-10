@@ -16,7 +16,7 @@ pre-rendered offline and streamed from ROM.
 | Webs | All 48 level entries (34 distinct shapes) |
 | Sprites | 845 pre-rendered images (5 sizes × up to 16 orientations) |
 | FMV | Title loop, per-web warp-in and zoom-out (32 frames each) |
-| Audio | Original pulse+noise chiptune (6 tracks) and 14 sound effects |
+| Audio | 6 original tracks + 14 SFX; VBlank ISR; music and SFX on separate channels |
 
 ## Credits and legal
 
@@ -89,12 +89,13 @@ make                 # compile, link, splice data banks → rom/t2k.gbc
 ```
 
 `tools/build.py` pre-renders webs, sprites, title frames and FMV streams into
-`gen/blob.bin`. `make` compiles the C code with GBDK (banks 0–2) and
-`tools/mkrom.py` overlays the blob from bank 3, padding to a power-of-two size
-(2 MiB here; 4 MiB / 256 banks is the ceiling).
+`gen/blob.bin`. `make` compiles the C code with GBDK (bank 0 platform/FMV/sound,
+bank 1 game) and `tools/mkrom.py` overlays the blob from bank 3, padding to a
+power-of-two size (2 MiB here; 4 MiB / 256 banks is the ceiling).
 
-Keep GBDK runtime, `main.c` and `fmv.c` in bank 0. The FMV player is `NONBANKED`
-so it can `SWITCH_ROM` while streaming.
+Keep GBDK runtime, `main.c`, `fmv.c` and `sound.c` in bank 0. The FMV player is
+`NONBANKED` so it can `SWITCH_ROM` while streaming. The music sequencer is
+installed with `add_VBL()` and must stay in bank 0.
 
 ## Project layout
 
@@ -103,7 +104,7 @@ src/            GBDK C code
   main.c        state machine, palettes, sprite streaming, lit lane, HUD
   fmv.c/.h      FMV player (NONBANKED)
   game.c/.h     game rules, AI droid, shots (8.8 fixed point) — bank 1
-  sound.c/.h    pulse + noise music sequencer and effects — bank 2
+  sound.c/.h    VBlank ISR: CH1 bass, CH3 lead, CH4 drums, CH2 SFX only
 tools/          offline data pipeline (Python)
   build.py      webs, sprites, title, FMV encode, blob pack
   fmvenc.py     tile dictionary, VRAM slot allocator, frame encoder
@@ -114,8 +115,11 @@ rom/t2k.gbc     the ROM
 web/            in-browser player (GameBoy-Online)
 ```
 
-ROM map: bank 0 platform + FMV player, bank 1 game, bank 2 sound, banks 3+ asset
-blob (font, sprites, static webs, FMV streams, tile dictionary).
+ROM map: bank 0 platform + FMV player + sound ISR, bank 1 game, banks 3+ asset
+blob (font, sprites, static webs, FMV streams, tile dictionary). Music and
+effects tick from VBlank so tempo does not stall on heavy frames. Channels are
+split so SFX never mute the bass or lead (CH1 bass, CH3 wave lead, CH2 SFX,
+CH4 drums — explode/die/zap borrow noise only).
 
 ## Known limitations
 

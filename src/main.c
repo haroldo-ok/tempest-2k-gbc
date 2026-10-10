@@ -630,7 +630,6 @@ void main(void)
         draw_sprites();
         wait_vbl_done();
         if (gstate == GS_TITLE || gstate == GS_WARP || gstate == GS_ZOOM) fmv_tick();
-        sound_tick();
         if (shake) {
             SCX_REG = (uint8_t)((frame8 & 2) ? 1 : 0xFF);
             SCY_REG = (uint8_t)((frame8 & 4) ? 1 : 0);

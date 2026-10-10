@@ -26,11 +26,10 @@
 #define SONG_WARP 5
 #define SONG_OFF 255
 
-void sound_init(void) BANKED;
-void sfx(uint8_t id) BANKED;
-void music_play(uint8_t song) BANKED;
-void music_stop(void) BANKED;
-void sound_pause(uint8_t on) BANKED;
-void sound_tick(void) BANKED;
+void sound_init(void) NONBANKED;
+void sfx(uint8_t id) NONBANKED;
+void music_play(uint8_t song) NONBANKED;
+void music_stop(void) NONBANKED;
+void sound_pause(uint8_t on) NONBANKED;
 
 #endif
